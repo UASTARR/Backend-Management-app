@@ -1,5 +1,5 @@
 import { signIn } from "@/auth"
- 
+
 export default function SignIn() {
   return (
     <div>
@@ -9,25 +9,12 @@ export default function SignIn() {
           <div style={styles.title}>UASTARR<br/> MANAGEMENT</div>
         </div>
 
-        {/* <div style={styles.inputBoxes}>
-          <input 
-            type="text"
-            name="name"
-            placeholder="username"
-            style={styles.inputs}/>
-          <input 
-            type="password"
-            name="password"
-            placeholder="password"
-            style={styles.inputs}/>
-
-        </div> */}
-        
-
         <form
         action={async () => {
           "use server"
-          await signIn("google")
+          await signIn("google" , {
+            redirectTo:'/dashboard'
+          })
         }}
         style={styles.form}
       >
@@ -57,31 +44,6 @@ export default function SignIn() {
   )
 } 
 
-// export default function Home() {
-//   return (
-//     <div style={styles.body}>
-//       <div style={styles.header}>
-        {/* <img src="/STARRLogoWhite.png" alt="STARR Logo" style={styles.logo} />
-        <div style={styles.title}>UASTARR<br/> MANAGEMENT</div>
-      </div>
-
-      <div style={styles.inputBoxes}>
-        <input 
-          type="text"
-          name="name"
-          placeholder="username"
-          style={styles.inputs}/>
-        <input 
-          type="password"
-          name="password"
-          placeholder="password"
-          style={styles.inputs}/>
-      </div>
-
-
-    </div>
-  );
-} */}
 
 const styles = {
   body: {
