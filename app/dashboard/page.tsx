@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import Link from "next/link";
 
 export default async function Dashboard() {
   const session = await auth();
@@ -11,12 +12,17 @@ export default async function Dashboard() {
         <p>Welcome, guest</p>
       )}
 
-	<div style={styles.menu}>
-		<img src="/user.svg" alt="Members" style={styles.icon}/>
-		<hr style={styles.divider}/>
-		<img src="/image.svg" alt="images" style={styles.icon}/>
-	</div>
-
+      <div style={styles.menu}>
+        <Link href={'/members'} style={styles.option}>
+            <img src="/user.svg" alt="Members" style={styles.icon}/>
+            <div style={{textAlign: 'center', fontWeight: 'bold', fontFamily: 'monospace',}}>Members</div>
+        </Link>
+        <hr style={styles.divider}/>
+        <Link href={'/photos'}>
+            <img src="/image.svg" alt="images" style={styles.icon}/>
+            <div style={{textAlign: 'center', fontWeight: 'bold', fontFamily: 'monospace',}}>Members</div>
+        </Link>
+      </div>
     </div>
 
   );
@@ -30,6 +36,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',	
+    justifyContent: 'space-between'
   },
   greeting: {
     color: 'white',
@@ -38,7 +45,6 @@ const styles = {
     fontSize: '6vh',
     display: 'flex',
     flexDirection: 'column' as const,
-    height: '100%',
   },
   menu: {
     display: 'flex',
@@ -48,6 +54,10 @@ const styles = {
     flex: 1,
     width: '100%',
   },
+  option: {
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
   icon: {
     width: '120px',
     height: '120px',
@@ -55,7 +65,7 @@ const styles = {
   },
   divider: {
     borderTop: "3px solid #bbb",
-    width: "80%",
+    width: "30%",
     margin: "20px 0"
   }
 };
