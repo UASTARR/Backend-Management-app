@@ -20,7 +20,6 @@ export default async function Dashboard() {
         <hr style={styles.divider}/>
         <Link href={'/photos'}>
             <img src="/image.svg" alt="images" style={styles.icon}/>
-            <div style={{textAlign: 'center', fontWeight: 'bold', fontFamily: 'monospace',}}>Members</div>
         </Link>
       </div>
     </div>
