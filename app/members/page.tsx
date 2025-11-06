@@ -4,33 +4,83 @@ import { useEffect, useState } from "react";
 
 
 export default function Members() {
+  // NextAuth hook that provides the current session and loading status.
+  // - `session` contains user data and, importantly for Drive/Sheets access,
+  //   `session.accessToken` (if your NextAuth callbacks attach it).
+  // - `status` === 'authenticated' when the session is ready and valid.
+  // If `useSession` complains, ensure your root `app/layout.tsx` wraps children
+  // with <SessionProvider> from `next-auth/react`.
   const { data: session, status } = useSession();
+  // Files fetched from the Drive listing API (`/api/drive`). Each file has
+  // shape: { id: string, name: string, mimeType: string, webViewLink?: string }
   const [files, setFiles] = useState([]);
+  // Loading indicator for the files list request
   const [loading, setLoading] = useState(false);
+  // User-visible error message. We keep a single string here for simplicity;
+  // for richer errors you might store { message, details }.
   const [error, setError] = useState("");
+  // A keyword to filter sheet names. Passed to `/api/drive?keyword=...` which
+  // uses Drive API `q` param to search names containing the keyword.
   const [keyword, setKeyword] = useState('');
+  // Values loaded from the Sheets proxy (`/api/sheets/{id}/values`). The
+  // Sheets API returns { range, majorDimension, values: string[][] }
   const [sheetValues, setSheetValues] = useState<string[][] | null>(null);
+  // Loading indicator for the sheet values request
   const [sheetLoading, setSheetLoading] = useState(false);
 
+  /**
+   * Fetch values for a spreadsheet. The client passes a spreadsheetId and a range
+   * (defaults to 'Sheet1'). The server proxy (`/api/sheets/[id]/values`) will
+   * attempt the requested range and automatically fall back to the first sheet
+   * if the range is invalid.
+   *
+   * Sets `sheetLoading` while in-flight and stores the result in `sheetValues`.
+   */
+  /**
+   * openSheet(fileId, range)
+   * ------------------------
+   * Purpose:
+   *   Fetch values for a spreadsheet. This is a client-side wrapper that
+   *   calls the server proxy at `/api/sheets/{fileId}/values?range=...`.
+   *
+   * Parameters:
+   *   - fileId: the Drive fileId of the Google Sheets spreadsheet.
+   *   - range: a Sheets range string (defaults to 'Sheet1'). The server
+   *     proxy will attempt this range first and automatically fall back to
+   *     the spreadsheet's first sheet if the range is invalid.
+   *
+   * Behavior:
+   *   - Shows a loading indicator via `sheetLoading`.
+   *   - Stores the returned `values` array (string[][]) in `sheetValues`.
+   *   - Stores a user-friendly error message in `error` on failure.
+   *
+   * Debugging tips:
+   *   - If you get 401 responses, confirm `session.accessToken` is present.
+   *     Check your NextAuth jwt/session callbacks in `auth.ts`.
+   *   - If you get 400/INVALID_ARGUMENT (range parse error), the server
+   *     proxy attempts to recover by reading the first sheet title and retrying.
+   *   - Use the Network panel to inspect the exact response body from
+   *     `/api/sheets/{id}/values` — Google returns helpful JSON errors.
+   */
   async function openSheet(fileId: string, range = 'Sheet1') {
     setSheetLoading(true);
     setSheetValues(null);
-    console.log('openSheet called for', fileId, 'range', range);
     try {
+      // Call the server proxy which handles authorization and retries.
       const res = await fetch(`/api/sheets/${fileId}/values?range=${encodeURIComponent(range)}`);
-      console.log('fetch sent, awaiting response...');
       if (!res.ok) {
+        // Server often forwards Google's JSON error — use it in the UI.
         const text = await res.text();
-        console.error('sheet fetch returned non-ok:', res.status, text);
         throw new Error(text || 'Failed to fetch sheet');
       }
+      // Expected payload: { range: string, majorDimension: string, values: string[][] }
       const json = await res.json();
-      console.log('sheet json:', json);
       const values: string[][] = json.values || [];
       setSheetValues(values);
       setError('');
     } catch (err: any) {
-      console.error('openSheet error', err);
+      // Store human-readable message; the UI shows it in red. For deeper
+      // debugging keep console logs available (or forward server logs).
       setError(err?.message || 'Failed to load sheet');
     } finally {
       setSheetLoading(false);
@@ -129,7 +179,7 @@ const styles = {
   body: {
     backgroundColor: '#343434',
     width: '100vw',
-    height: '100vh',
+    height: '100',
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
@@ -226,7 +276,6 @@ const styles = {
   },
   sheetContainer: {
     width: '90%',
-    maxWidth: '900px',
     background: '#222',
     padding: '16px',
     borderRadius: '8px',
