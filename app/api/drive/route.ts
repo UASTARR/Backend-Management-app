@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { auth } from "@/auth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
   // @ts-ignore
   const accessToken = session?.accessToken;
@@ -13,9 +13,22 @@ export async function GET() {
 
   const drive = google.drive({ version: "v3", auth: oauth2Client });
   try {
+    const url = new URL(request.url);
+    const keyword = url.searchParams.get('keyword');
+    // base query: only spreadsheets
+    let q = "mimeType='application/vnd.google-apps.spreadsheet'";
+    if (keyword) {
+      // name contains keyword (case-insensitive not directly supported by Drive API; this will do a contains match)
+      q += ` and name contains '${keyword.replace("'", "\\'")}'`;
+    }
+
     const result = await drive.files.list({
-      pageSize: 10,
-      fields: "files(id, name, mimeType)",
+      pageSize: 50,
+      fields: "files(id, name, mimeType, webViewLink)",
+      q,
+      corpora: 'allDrives',
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
     });
     return new Response(JSON.stringify(result.data.files ?? []), {
       headers: { "Content-Type": "application/json" },
