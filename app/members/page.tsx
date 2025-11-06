@@ -104,6 +104,41 @@ export default function Members() {
     }
   }
 
+  /**
+   * Fetch formatted sheet data (values + background colors) and store it in
+   * `sheetValues` as a matrix of strings while storing per-cell colors in
+   * `sheetColors` as parallel matrix of optional rgb strings.
+   */
+  const [sheetColors, setSheetColors] = useState<string[][] | null>(null);
+  async function openSheetStyled(fileId: string, range = 'Sheet1!A1:100') {
+    setSheetLoading(true);
+    setSheetValues(null);
+    setSheetColors(null);
+    try {
+      const res = await fetch(`/api/sheets/${fileId}/format?range=${encodeURIComponent(range)}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to fetch formatted sheet');
+      }
+      const json = await res.json();
+      // json.rows: [{ cells: [{ text, bg?: {r,g,b} }] }]
+      const rows: string[][] = json.rows.map((r: any) => r.cells.map((c: any) => c.text ?? ''));
+      const cols: string[][] = json.rows.map((r: any) => r.cells.map((c: any) => c.bg ? `rgb(${c.bg.r}, ${c.bg.g}, ${c.bg.b})` : ''));
+      setSheetValues(rows);
+      setSheetColors(cols);
+      setError('');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load formatted sheet');
+    } finally {
+      setSheetLoading(false);
+    }
+  }
+
+  function colorToCssFromMatrix(row: number, col: number) {
+    if (!sheetColors) return undefined;
+    return sheetColors[row]?.[col] || undefined;
+  }
+
   useEffect(() => {
     if (status === "authenticated") {
       fetchFiles(keyword);
@@ -127,6 +162,7 @@ export default function Members() {
           />
           <button style={styles.smallButton} onClick={() => fetchFiles(keyword)}>Search</button>
         </div>
+        {/* Files area: loading, error, empty, or list */}
         {loading ? (
           <div style={styles.loading}>Loading files...</div>
         ) : error ? (
@@ -137,39 +173,63 @@ export default function Members() {
           <ul style={styles.fileList}>
             {files.map((file: any) => (
               <li key={file.id} style={styles.fileItem}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={styles.fileName}>{file.name}</span>
-                    <span style={styles.fileType}>({file.mimeType})</span>
-                  </div>
-                  <div>
-                    {file.mimeType === 'application/vnd.google-apps.spreadsheet' ? (
-                      <button style={styles.smallButton} onClick={() => openSheet(file.id)}>Open</button>
-                    ) : null}
-                  </div>
-                </li>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={styles.fileName}>{file.name}</span>
+                  <span style={styles.fileType}>({file.mimeType})</span>
+                </div>
+                <div>
+                  {file.mimeType === 'application/vnd.google-apps.spreadsheet' ? (
+                    <>
+                      <button style={styles.smallButton} onClick={() => openSheetStyled(file.id)}>Open</button>
+                    </>
+                  ) : null}
+                </div>
+              </li>
             ))}
           </ul>
         )}
-          {sheetLoading ? (
-            <div style={styles.loading}>Loading sheet...</div>
-          ) : sheetValues ? (
-            <div style={styles.sheetContainer}>
-              <button style={styles.smallButton} onClick={() => setSheetValues(null)}>Close Sheet</button>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={styles.sheetTable}>
-                  <tbody>
-                    {sheetValues.map((row, ri) => (
-                      <tr key={ri}>
-                        {row.map((cell, ci) => (
-                          <td key={ci} style={styles.sheetCell}>{cell}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+
+        {/* Sheet viewer area: show loading, then values (optionally with colors) */}
+        {sheetLoading ? (
+          <div style={styles.loading}>Loading sheet...</div>
+        ) : sheetValues ? (
+          <div style={styles.sheetContainer} data-debug="sheet-viewer">
+            <button
+              style={styles.smallButton}
+              onClick={() => {
+                setSheetValues(null);
+                setSheetColors(null);
+              }}
+              data-debug="close-sheet"
+            >
+              Close Sheet
+            </button>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.sheetTable}>
+                <tbody>
+                  {sheetValues.map((row, ri) => (
+                    <tr key={ri} data-debug={`sheet-row-${ri}`}>
+                      {row.map((cell, ci) => {
+                        // If sheetColors is populated use it, otherwise render plain
+                        const bg = sheetColors ? sheetColors[ri]?.[ci] : undefined;
+                        return (
+                          <td
+                            key={ci}
+                            style={{ ...styles.sheetCell, backgroundColor: bg }}
+                            data-debug={`sheet-cell-${ri}-${ci}`}
+                          >
+                            {cell}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
