@@ -110,6 +110,13 @@ export default function Members() {
    * `sheetColors` as parallel matrix of optional rgb strings.
    */
   const [sheetColors, setSheetColors] = useState<string[][] | null>(null);
+  // Resolved sheet title from the format proxy - used to compute A1 ranges
+  const [sheetTitle, setSheetTitle] = useState<string | null>(null);
+  // Current spreadsheet id for save requests
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
+  // In-memory edits map: key == `${row}:${col}` -> edited string
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   async function openSheetStyled(fileId: string, range = 'Sheet1!A1:100') {
     setSheetLoading(true);
     setSheetValues(null);
@@ -126,12 +133,87 @@ export default function Members() {
       const cols: string[][] = json.rows.map((r: any) => r.cells.map((c: any) => c.bg ? `rgb(${c.bg.r}, ${c.bg.g}, ${c.bg.b})` : ''));
       setSheetValues(rows);
       setSheetColors(cols);
+      // remember title and spreadsheet id for edits
+      setSheetTitle(json.sheetTitle || null);
+      setSpreadsheetId(fileId);
       setError('');
     } catch (err: any) {
       setError(err?.message || 'Failed to load formatted sheet');
     } finally {
       setSheetLoading(false);
     }
+  }
+
+  // Convert 0-based column index to A1 column string (0 -> A, 25 -> Z, 26 -> AA)
+  function colIndexToA1(col: number) {
+    let s = '';
+    let n = col + 1;
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      s = String.fromCharCode(65 + rem) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
+  }
+  function rcToA1(row: number, col: number, title: string) {
+    return `${title}!${colIndexToA1(col)}${row + 1}`;
+  }
+
+  async function saveEdits() {
+    if (!spreadsheetId) return setError('Missing spreadsheet id');
+    if (!sheetTitle) return setError('Missing sheet title');
+    const keys = Object.keys(edits);
+    if (keys.length === 0) return;
+
+    // Build updates: one update per edited cell (could be merged later)
+    const updates = keys.map((k) => {
+      const [rStr, cStr] = k.split(':');
+      const r = parseInt(rStr, 10);
+      const c = parseInt(cStr, 10);
+      return { range: rcToA1(r, c, sheetTitle), values: [[edits[k]]] };
+    });
+
+    // optimistic apply
+    const prev = sheetValues ? sheetValues.map(r => r.slice()) : null;
+    if (sheetValues) {
+      const newVals = sheetValues.map(r => r.slice());
+      keys.forEach(k => {
+        const [rStr, cStr] = k.split(':');
+        const r = parseInt(rStr, 10);
+        const c = parseInt(cStr, 10);
+        newVals[r][c] = edits[k];
+      });
+      setSheetValues(newVals);
+    }
+    const oldEdits = { ...edits };
+    setEdits({});
+
+    try {
+      const res = await fetch(`/api/sheets/${spreadsheetId}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates, valueInputOption: 'USER_ENTERED' })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        // revert
+        if (prev) setSheetValues(prev);
+        setEdits(oldEdits);
+        setError(text || 'Failed to save edits');
+      } else {
+        setError('');
+      }
+    } catch (err: any) {
+      if (prev) setSheetValues(prev);
+      setEdits(oldEdits);
+      setError(err?.message || 'Failed to save edits');
+    }
+  }
+
+  function cancelEdits() {
+    setEdits({});
+    setEditingKey(null);
+    // optionally reload original values by re-calling openSheetStyled
   }
 
   function colorToCssFromMatrix(row: number, col: number) {
@@ -206,6 +288,14 @@ export default function Members() {
             </button>
 
             <div style={{ overflowX: 'auto' }}>
+              <div style={{ marginBottom: 8 }}>
+                {Object.keys(edits).length > 0 ? (
+                  <>
+                    <button style={styles.smallButton} onClick={saveEdits}>Save</button>
+                    <button style={{ ...styles.smallButton, marginLeft: 8 }} onClick={cancelEdits}>Cancel</button>
+                  </>
+                ) : null}
+              </div>
               <table style={styles.sheetTable}>
                 <tbody>
                   {sheetValues.map((row, ri) => (
@@ -213,13 +303,33 @@ export default function Members() {
                       {row.map((cell, ci) => {
                         // If sheetColors is populated use it, otherwise render plain
                         const bg = sheetColors ? sheetColors[ri]?.[ci] : undefined;
+                        const key = `${ri}:${ci}`;
+                        const isEditing = editingKey === key;
+                        const displayValue = edits[key] ?? cell;
                         return (
                           <td
                             key={ci}
                             style={{ ...styles.sheetCell, backgroundColor: bg }}
                             data-debug={`sheet-cell-${ri}-${ci}`}
+                            onDoubleClick={() => setEditingKey(key)}
                           >
-                            {cell}
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                defaultValue={displayValue}
+                                onBlur={(e) => {
+                                  const v = e.target.value;
+                                  setEdits(prev => ({ ...prev, [key]: v }));
+                                  setEditingKey(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                style={{ width: '100%', boxSizing: 'border-box' }}
+                              />
+                            ) : (
+                              displayValue
+                            )}
                           </td>
                         );
                       })}

@@ -22,7 +22,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
       const url = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`);
       url.searchParams.set('includeGridData', 'true');
       url.searchParams.set('ranges', r);
-      url.searchParams.set('fields', 'sheets(data(rowData(values(userEnteredValue,userEnteredFormat/backgroundColor))))');
+  // Request sheet title (properties.title) as well as the grid data
+  url.searchParams.set('fields', 'sheets(properties/title,data(rowData(values(userEnteredValue,userEnteredFormat/backgroundColor))))');
       return fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
     };
 
@@ -55,9 +56,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return new Response(text, { status: res.status, headers: { 'Content-Type': res.headers.get('content-type') || 'text/plain' } });
     }
 
-    const json = await res.json();
-    // json.sheets[0].data[0].rowData -> array of rows
-    const rows = (json?.sheets?.[0]?.data?.[0]?.rowData || []).map((row: any) => {
+  const json = await res.json();
+  // Resolve sheet title if present so client can compute A1 addresses
+  const sheetTitle = json?.sheets?.[0]?.properties?.title || null;
+  // json.sheets[0].data[0].rowData -> array of rows
+  const rows = (json?.sheets?.[0]?.data?.[0]?.rowData || []).map((row: any) => {
       const cells = (row.values || []).map((v: any) => {
         const text = v?.userEnteredValue ? (v.userEnteredValue.stringValue ?? v.userEnteredValue.numberValue ?? '') : '';
         const bc = v?.userEnteredFormat?.backgroundColor;
@@ -73,7 +76,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return { cells };
     });
 
-    return new Response(JSON.stringify({ rows }), { headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ sheetTitle, rows }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err: any) {
     console.error('sheets format proxy error', err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
