@@ -41,21 +41,22 @@ bun  dev
  
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-  
+ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+ 
 ## How to use
 First log in with your ualberta email.
 ### Members Functionality
-For now, you can access any Google Sheets file stored on your Google Drive (including shared drives)
-Look up the name of any spreadsheet and open it.
-Double click on a cell to edit, and press enter and "save" to save your changes.
+- For now, you can access any Google Sheets file stored on your Google Drive (including shared drives)
+- Look up the name of any spreadsheet and open it.
+- Double click on a cell to edit, and press enter and "save" to save your changes.
 
-  ### Photos Functionality
-  W.I.P 
-
-
+ ### Photos Functionality
+ W.I.P 
 
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+
+
 
   
 
@@ -76,6 +77,8 @@ To learn more about Next.js, take a look at the following resources:
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
   
+
+ -
 
 ## Deploy on Vercel
 
