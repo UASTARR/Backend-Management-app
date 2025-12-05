@@ -1,10 +1,16 @@
 import { signIn } from "@/auth"
 
+
+/*
+Log In Page
+*/
+
 export default function SignIn() {
   return (
     <div>
       <div style={styles.body}>
         <div style={styles.header}>
+          {/*Logo and Title*/}
           <img src="/STARRLogoWhite.png" alt="STARR Logo" style={styles.logo} />
           <div style={styles.title}>UASTARR<br/> MANAGEMENT</div>
         </div>
@@ -18,6 +24,8 @@ export default function SignIn() {
         }}
         style={styles.form}
       >
+
+  {/* Vibe coded google sign in button */}
   <button type="submit" style={styles.googleButton}>
     <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
