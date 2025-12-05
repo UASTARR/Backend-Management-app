@@ -1,29 +1,91 @@
-# backend_management_app
 
-A new Flutter project.
+  
+  
+  ## STARR Backend Management App
+App to help admin manage the club.
+  
+  
+  
+  
+
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+  
 
 ## Getting Started
 
-This project is a starting point for a Flutter application that follows the
-[simple app state management
-tutorial](https://flutter.dev/to/state-management-sample).
+  
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+First, run the development server:
 
-## Assets
+  
 
-The `assets` directory houses images, fonts, and any other files you want to
-include with your application.
+```bash
 
-The `assets/images` directory contains [resolution-aware
-images](https://flutter.dev/to/resolution-aware-images).
+npm  run  dev
 
-## Localization
+# or
 
-This project generates localized messages based on arb files found in
-the `lib/src/localization` directory.
+yarn  dev
 
-To support additional languages, please visit the tutorial on
-[Internationalizing Flutter apps](https://flutter.dev/to/internationalization).
+# or
+
+pnpm  dev
+
+# or
+
+bun  dev
+
+```
+
+ 
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+ 
+## How to use
+First log in with your ualberta email.
+### Members Functionality
+- For now, you can access any Google Sheets file stored on your Google Drive (including shared drives)
+- Look up the name of any spreadsheet and open it.
+- Double click on a cell to edit, and press enter and "save" to save your changes.
+
+ ### Photos Functionality
+ W.I.P 
+
+
+
+
+
+
+  
+
+## Learn More
+
+  
+
+To learn more about Next.js, take a look at the following resources:
+
+  
+
+-  [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+
+-  [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+  
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+  
+
+ -
+
+## Deploy on Vercel
+
+  
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+  
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

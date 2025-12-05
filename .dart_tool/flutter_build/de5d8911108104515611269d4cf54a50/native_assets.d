@@ -1,0 +1,1 @@
+ /Users/kevincao/Projects/USTARR\ stuff/Backend-Management-app/.dart_tool/flutter_build/de5d8911108104515611269d4cf54a50/native_assets.yaml: 

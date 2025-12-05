@@ -1,0 +1,466 @@
+"use client";
+import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
+
+
+export default function Members() {
+  // NextAuth hook that provides the current session and loading status.
+  // - `session` contains user data and, importantly for Drive/Sheets access,
+  //   `session.accessToken` (if your NextAuth callbacks attach it).
+  // - `status` === 'authenticated' when the session is ready and valid.
+  // If `useSession` complains, ensure your root `app/layout.tsx` wraps children
+  // with <SessionProvider> from `next-auth/react`.
+  const { data: session, status } = useSession();
+  // Files fetched from the Drive listing API (`/api/drive`). Each file has
+  // shape: { id: string, name: string, mimeType: string, webViewLink?: string }
+  const [files, setFiles] = useState([]);
+  // Loading indicator for the files list request
+  const [loading, setLoading] = useState(false);
+  // User-visible error message. We keep a single string here for simplicity;
+  // for richer errors you might store { message, details }.
+  const [error, setError] = useState("");
+  // A keyword to filter sheet names. Passed to `/api/drive?keyword=...` which
+  // uses Drive API `q` param to search names containing the keyword.
+  const [keyword, setKeyword] = useState('');
+  // Values loaded from the Sheets proxy (`/api/sheets/{id}/values`). The
+  // Sheets API returns { range, majorDimension, values: string[][] }
+  const [sheetValues, setSheetValues] = useState<string[][] | null>(null);
+  // Loading indicator for the sheet values request
+  const [sheetLoading, setSheetLoading] = useState(false);
+
+  /**
+   * Fetch values for a spreadsheet. The client passes a spreadsheetId and a range
+   * (defaults to 'Sheet1'). The server proxy (`/api/sheets/[id]/values`) will
+   * attempt the requested range and automatically fall back to the first sheet
+   * if the range is invalid.
+   *
+   * Sets `sheetLoading` while in-flight and stores the result in `sheetValues`.
+   */
+  /**
+   * openSheet(fileId, range)
+   * ------------------------
+   * Purpose:
+   *   Fetch values for a spreadsheet. This is a client-side wrapper that
+   *   calls the server proxy at `/api/sheets/{fileId}/values?range=...`.
+   *
+   * Parameters:
+   *   - fileId: the Drive fileId of the Google Sheets spreadsheet.
+   *   - range: a Sheets range string (defaults to 'Sheet1'). The server
+   *     proxy will attempt this range first and automatically fall back to
+   *     the spreadsheet's first sheet if the range is invalid.
+   *
+   * Behavior:
+   *   - Shows a loading indicator via `sheetLoading`.
+   *   - Stores the returned `values` array (string[][]) in `sheetValues`.
+   *   - Stores a user-friendly error message in `error` on failure.
+   *
+   * Debugging tips:
+   *   - If you get 401 responses, confirm `session.accessToken` is present.
+   *     Check your NextAuth jwt/session callbacks in `auth.ts`.
+   *   - If you get 400/INVALID_ARGUMENT (range parse error), the server
+   *     proxy attempts to recover by reading the first sheet title and retrying.
+   *   - Use the Network panel to inspect the exact response body from
+   *     `/api/sheets/{id}/values` — Google returns helpful JSON errors.
+   */
+  async function openSheet(fileId: string, range = 'Sheet1') {
+    setSheetLoading(true);
+    setSheetValues(null);
+    try {
+      // Call the server proxy which handles authorization and retries.
+      const res = await fetch(`/api/sheets/${fileId}/values?range=${encodeURIComponent(range)}`);
+      if (!res.ok) {
+        // Server often forwards Google's JSON error — use it in the UI.
+        const text = await res.text();
+        throw new Error(text || 'Failed to fetch sheet');
+      }
+      // Expected payload: { range: string, majorDimension: string, values: string[][] }
+      const json = await res.json();
+      const values: string[][] = json.values || [];
+      setSheetValues(values);
+      setError('');
+    } catch (err: any) {
+      // Store human-readable message; the UI shows it in red. For deeper
+      // debugging keep console logs available (or forward server logs).
+      setError(err?.message || 'Failed to load sheet');
+    } finally {
+      setSheetLoading(false);
+    }
+  }
+
+  async function fetchFiles(kw = '') {
+    setLoading(true);
+    setError('');
+    try {
+      const url = kw ? `/api/drive?keyword=${encodeURIComponent(kw)}` : '/api/drive';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch files');
+      const data = await res.json();
+      setFiles(data);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to fetch files');
+      setFiles([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * Fetch formatted sheet data (values + background colors) and store it in
+   * `sheetValues` as a matrix of strings while storing per-cell colors in
+   * `sheetColors` as parallel matrix of optional rgb strings.
+   */
+  const [sheetColors, setSheetColors] = useState<string[][] | null>(null);
+  // Resolved sheet title from the format proxy - used to compute A1 ranges
+  const [sheetTitle, setSheetTitle] = useState<string | null>(null);
+  // Current spreadsheet id for save requests
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
+  // In-memory edits map: key == `${row}:${col}` -> edited string
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  async function openSheetStyled(fileId: string, range = 'Sheet1!A1:100') {
+    setSheetLoading(true);
+    setSheetValues(null);
+    setSheetColors(null);
+    try {
+      const res = await fetch(`/api/sheets/${fileId}/format?range=${encodeURIComponent(range)}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Failed to fetch formatted sheet');
+      }
+      const json = await res.json();
+      // json.rows: [{ cells: [{ text, bg?: {r,g,b} }] }]
+      const rows: string[][] = json.rows.map((r: any) => r.cells.map((c: any) => c.text ?? ''));
+      const cols: string[][] = json.rows.map((r: any) => r.cells.map((c: any) => c.bg ? `rgb(${c.bg.r}, ${c.bg.g}, ${c.bg.b})` : ''));
+      setSheetValues(rows);
+      setSheetColors(cols);
+      // remember title and spreadsheet id for edits
+      setSheetTitle(json.sheetTitle || null);
+      setSpreadsheetId(fileId);
+      setError('');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load formatted sheet');
+    } finally {
+      setSheetLoading(false);
+    }
+  }
+
+  // Convert 0-based column index to A1 column string (0 -> A, 25 -> Z, 26 -> AA)
+  function colIndexToA1(col: number) {
+    let s = '';
+    let n = col + 1;
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      s = String.fromCharCode(65 + rem) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
+  }
+  function rcToA1(row: number, col: number, title: string) {
+    return `${title}!${colIndexToA1(col)}${row + 1}`;
+  }
+
+  async function saveEdits() {
+    if (!spreadsheetId) return setError('Missing spreadsheet id');
+    if (!sheetTitle) return setError('Missing sheet title');
+    const keys = Object.keys(edits);
+    if (keys.length === 0) return;
+
+    // Build updates: one update per edited cell (could be merged later)
+    const updates = keys.map((k) => {
+      const [rStr, cStr] = k.split(':');
+      const r = parseInt(rStr, 10);
+      const c = parseInt(cStr, 10);
+      return { range: rcToA1(r, c, sheetTitle), values: [[edits[k]]] };
+    });
+
+    // optimistic apply
+    const prev = sheetValues ? sheetValues.map(r => r.slice()) : null;
+    if (sheetValues) {
+      const newVals = sheetValues.map(r => r.slice());
+      keys.forEach(k => {
+        const [rStr, cStr] = k.split(':');
+        const r = parseInt(rStr, 10);
+        const c = parseInt(cStr, 10);
+        newVals[r][c] = edits[k];
+      });
+      setSheetValues(newVals);
+    }
+    const oldEdits = { ...edits };
+    setEdits({});
+
+    try {
+      const res = await fetch(`/api/sheets/${spreadsheetId}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates, valueInputOption: 'USER_ENTERED' })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        // revert
+        if (prev) setSheetValues(prev);
+        setEdits(oldEdits);
+        setError(text || 'Failed to save edits');
+      } else {
+        setError('');
+      }
+    } catch (err: any) {
+      if (prev) setSheetValues(prev);
+      setEdits(oldEdits);
+      setError(err?.message || 'Failed to save edits');
+    }
+  }
+
+  function cancelEdits() {
+    setEdits({});
+    setEditingKey(null);
+    // optionally reload original values by re-calling openSheetStyled
+  }
+
+  function colorToCssFromMatrix(row: number, col: number) {
+    if (!sheetColors) return undefined;
+    return sheetColors[row]?.[col] || undefined;
+  }
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchFiles(keyword);
+    }
+  }, [status]);
+
+  if (status === "loading") {
+    return <div style={styles.body}><div style={styles.greeting}>Loading session...</div></div>;
+  }
+
+  return (
+    <div style={styles.body}>
+      <div style={styles.greeting}>Google Drive Files</div>
+      <div style={styles.menu}>
+        <div style={styles.searchRow}>
+          <input
+            placeholder="Search sheets by keyword"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            style={styles.searchInput}
+          />
+          <button style={styles.smallButton} onClick={() => fetchFiles(keyword)}>Search</button>
+        </div>
+        {/* Files area: loading, error, empty, or list */}
+        {loading ? (
+          <div style={styles.loading}>Loading files...</div>
+        ) : error ? (
+          <div style={styles.error}>Error: {error}</div>
+        ) : files.length === 0 ? (
+          <div style={styles.noFiles}>No files found.</div>
+        ) : (
+          <ul style={styles.fileList}>
+            {files.map((file: any) => (
+              <li key={file.id} style={styles.fileItem}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={styles.fileName}>{file.name}</span>
+                  <span style={styles.fileType}>({file.mimeType})</span>
+                </div>
+                <div>
+                  {file.mimeType === 'application/vnd.google-apps.spreadsheet' ? (
+                    <>
+                      <button style={styles.smallButton} onClick={() => openSheetStyled(file.id)}>Open</button>
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Sheet viewer area: show loading, then values (optionally with colors) */}
+        {sheetLoading ? (
+          <div style={styles.loading}>Loading sheet...</div>
+        ) : sheetValues ? (
+          <div style={styles.sheetContainer} data-debug="sheet-viewer">
+            <button
+              style={styles.smallButton}
+              onClick={() => {
+                setSheetValues(null);
+                setSheetColors(null);
+              }}
+              data-debug="close-sheet"
+            >
+              Close Sheet
+            </button>
+
+            <div style={{ overflowX: 'auto' }}>
+              <div style={{ marginBottom: 8 }}>
+                {Object.keys(edits).length > 0 ? (
+                  <>
+                    <button style={styles.smallButton} onClick={saveEdits}>Save</button>
+                    <button style={{ ...styles.smallButton, marginLeft: 8 }} onClick={cancelEdits}>Cancel</button>
+                  </>
+                ) : null}
+              </div>
+              <table style={styles.sheetTable}>
+                <tbody>
+                  {sheetValues.map((row, ri) => (
+                    <tr key={ri} data-debug={`sheet-row-${ri}`}>
+                      {row.map((cell, ci) => {
+                        // If sheetColors is populated use it, otherwise render plain
+                        const bg = sheetColors ? sheetColors[ri]?.[ci] : undefined;
+                        const key = `${ri}:${ci}`;
+                        const isEditing = editingKey === key;
+                        const displayValue = edits[key] ?? cell;
+                        return (
+                          <td
+                            key={ci}
+                            style={{ ...styles.sheetCell, backgroundColor: bg }}
+                            data-debug={`sheet-cell-${ri}-${ci}`}
+                            onDoubleClick={() => setEditingKey(key)}
+                          >
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                defaultValue={displayValue}
+                                onBlur={(e) => {
+                                  const v = e.target.value;
+                                  setEdits(prev => ({ ...prev, [key]: v }));
+                                  setEditingKey(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                style={{ width: '100%', boxSizing: 'border-box' }}
+                              />
+                            ) : (
+                              displayValue
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  body: {
+    backgroundColor: '#343434',
+    width: '100vw',
+    height: '100',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  greeting: {
+    color: 'white',
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    fontSize: '6vh',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    marginTop: '40px',
+    marginBottom: '20px',
+    textAlign: 'center' as const,
+  },
+  menu: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: 1,
+    width: '100%',
+  },
+  loading: {
+    color: '#bbb',
+    fontFamily: 'monospace',
+    fontSize: '2vh',
+    marginTop: '20px',
+  },
+  error: {
+    color: 'red',
+    fontFamily: 'monospace',
+    fontSize: '2vh',
+    marginTop: '20px',
+  },
+  noFiles: {
+    color: '#bbb',
+    fontFamily: 'monospace',
+    fontSize: '2vh',
+    marginTop: '20px',
+  },
+  fileList: {
+    listStyle: 'none',
+    padding: 0,
+    marginTop: '20px',
+    width: '80%',
+    maxWidth: '600px',
+  },
+  fileItem: {
+    background: '#222',
+    color: 'white',
+    fontFamily: 'monospace',
+    fontSize: '2vh',
+    margin: '10px 0',
+    padding: '16px',
+    borderRadius: '8px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+  },
+  fileName: {
+    fontWeight: 'bold',
+  },
+  fileType: {
+    color: '#bbb',
+    marginLeft: '10px',
+    fontSize: '1.8vh',
+  },
+  searchRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  searchInput: {
+    padding: '8px 12px',
+    borderRadius: 6,
+    border: '1px solid #444',
+    background: '#111',
+    color: '#fff',
+    fontFamily: 'monospace'
+  },
+  smallButton: {
+    marginLeft: '8px',
+    padding: '6px 10px',
+    borderRadius: '6px',
+    border: 'none',
+    background: '#fff',
+    color: '#343434',
+    cursor: 'pointer',
+    fontFamily: 'monospace'
+  },
+  sheetContainer: {
+    width: '90%',
+    background: '#222',
+    padding: '16px',
+    borderRadius: '8px',
+    marginTop: '20px',
+    marginBottom: '40px'
+  },
+  sheetTable: {
+    borderCollapse: 'collapse' as const,
+    width: '100%'
+  },
+  sheetCell: {
+    border: '1px solid #444',
+    padding: '8px',
+    color: '#ddd',
+    fontFamily: 'monospace',
+    fontSize: '1.6vh'
+  }
+};
